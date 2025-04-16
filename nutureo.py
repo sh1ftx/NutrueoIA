@@ -17,22 +17,22 @@ load_dotenv()
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 os.environ["LANGCHAIN_TRACING_V2"] = "false"
 
+
 class Nutureo:
     def __init__(self, session_id: str, db_path: str = 'sqlite:///memory.db'):
-        # ✅ Verificação rigorosa da chave da API
         api_key = os.getenv("GOOGLE_API_KEY")
         if not api_key:
             raise EnvironmentError("❌ A variável de ambiente 'GOOGLE_API_KEY' não foi definida ou está vazia.")
 
         try:
-            # 🤖 Inicializa o modelo Gemini com tolerância a falhas futura
+            # Inicializa o modelo
             self.llm = ChatGoogleGenerativeAI(
                 model="gemini-1.5-pro",
-                temperature=0.1,
-                max_output_tokens=2048,  # Ajustável futuramente
+                temperature=0.7,
+                max_output_tokens=2048,
             )
 
-            # 💬 Histórico persistente da conversa
+            # Histórico persistente
             self.chat_history = SQLChatMessageHistory(
                 session_id=session_id,
                 connection_string=db_path
@@ -44,39 +44,39 @@ class Nutureo:
                 return_messages=True
             )
 
-            # ⚙️ Ferramentas que o agente pode usar
+            # Ferramentas disponíveis para o agente
             self.tools = [
                 Tool(
-                    name="nutritional_advice",
+                    name="Conselho Nutricional",
                     func=self.provide_nutritional_advice,
-                    description="Fornece conselhos nutricionais com base em evidências científicas."
+                    description="Use esta ferramenta para fornecer conselhos nutricionais personalizados baseados em ciência."
                 )
             ]
 
-            # 🧾 Prompt de sistema com personalidade do Nutureo
+            # Prompt do sistema
             system_prompt = '''
-Nome do Agente: Nutureo, o Mestre Nutrólogo Supremo
-
-Você fala em PT-BR sempre, exceto se te pedirem outro idioma.
+Você é Nutureo, o Mestre Nutrólogo Supremo. Sempre fale em português, exceto se solicitado outro idioma.
 
 Contexto:
-Nutureo é uma IA de ponta no campo da nutrição, com expertise em bioquímica e dietas como mediterrânea, cetogênica e ayurvédica. Consultado por celebridades, ele cria planos alimentares personalizados com base em ciência e cultura alimentar global.
+Você é uma IA especialista em nutrição com conhecimento profundo em bioquímica, dietas (mediterrânea, cetogênica, ayurvédica), e comportamento alimentar. Suas recomendações são baseadas em evidências científicas e cultura alimentar.
 
 Personalidade:
-- ENTP: Extrovertido, criativo, lógico
-- Comunicação clara, científica e com leve humor
-- Explica conceitos complexos de forma simples
+- Extrovertido, criativo, lógico (ENTP)
+- Comunicação clara e com leve humor
+- Capacidade de simplificar conceitos complexos
 
 Objetivo:
-Empoderar o usuário a tomar decisões alimentares saudáveis, com base em ciência e propósito.
+Ajudar o usuário a tomar decisões alimentares mais saudáveis e conscientes, com base em ciência e propósito.
             '''
 
             self.agent = initialize_agent(
                 tools=self.tools,
                 llm=self.llm,
-                agent_type=AgentType.ZERO_SHOT_REACT_DESCRIPTION,
+                agent_type=AgentType.OPENAI_FUNCTIONS,
                 memory=self.memory,
-                agent_kwargs={"system_prompt": system_prompt},
+                agent_kwargs={
+                    "system_message": system_prompt.strip()
+                },
                 verbose=False
             )
 
@@ -86,8 +86,8 @@ Empoderar o usuário a tomar decisões alimentares saudáveis, com base em ciên
 
     def provide_nutritional_advice(self, query: str) -> str:
         try:
-            # 💡 Lógica de conselho pode ser aprimorada com base em dados reais futuramente
-            return f"🍏 Conselho nutricional baseado em sua dúvida: '{query}'"
+            resposta = self.llm.predict(f"Você é um especialista em nutrição. Responda com base científica a esta dúvida: {query}")
+            return resposta
         except Exception as e:
             print("⚠️ Erro ao fornecer conselho nutricional:", e)
             return "⚠️ Ocorreu um problema ao gerar o conselho."
@@ -97,21 +97,20 @@ Empoderar o usuário a tomar decisões alimentares saudáveis, com base em ciên
         while retries < max_retries:
             try:
                 result = self.agent.invoke({"input": input_text})
-                return result.get("output", "❗ Resposta não encontrada.")
+                return result["output"]  # <-- AQUI: Corrigido para retornar só a resposta do bot
             except Exception as e:
                 retries += 1
                 print(f"⚠️ Tentativa {retries}/{max_retries} falhou: {e}")
                 if retries >= max_retries:
                     return "⚠️ Excedemos o número máximo de tentativas. Tente novamente mais tarde."
-                else:
-                    # Delay progressivo para retry
-                    wait_time = random.randint(2, 5) ** retries
-                    print(f"⏳ Tentando novamente em {wait_time} segundos...")
-                    time.sleep(wait_time)
+                wait_time = random.randint(2, 5) ** retries
+                print(f"⏳ Tentando novamente em {wait_time} segundos...")
+                time.sleep(wait_time)
         return "⚠️ Algo deu errado durante o processo, tente mais tarde."
 
     def run(self, input_text: str) -> str:
         return self.run_with_retry(input_text)
+
 
 def main():
     print("🤖 Nutureo está pronto para ajudá-lo com suas dúvidas nutricionais!")
@@ -141,6 +140,7 @@ def main():
         except Exception as e:
             print("💥 Erro inesperado na interface:", e)
             continue
+
 
 if __name__ == "__main__":
     main()
